@@ -109,9 +109,13 @@ public:
 
     }
     
+    postgres_t () : obj( new NODE ) { obj->state = 0; }
+    
     /*─······································································─*/
 
     void exec( const string_t& cmd, const function_t<void,sql_item_t>& cb ) const {
+        if( obj->state == 0 ){ return; }
+
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
         if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res); 
@@ -124,6 +128,8 @@ public:
 
     array_t<sql_item_t> exec( const string_t& cmd ) const { array_t<sql_item_t> arr;
         function_t<void,sql_item_t> cb = [&]( sql_item_t args ){ arr.push( args ); };
+        if( obj->state == 0 ){ return nullptr; }
+
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
         if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res); 

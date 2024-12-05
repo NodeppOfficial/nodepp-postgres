@@ -1,5 +1,5 @@
 #include <nodepp/nodepp.h>
-#include <postgres.h>
+#include <postgres/postgres.h>
 
 using namespace nodepp;
 
