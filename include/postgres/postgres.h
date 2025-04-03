@@ -22,7 +22,7 @@ protected:
 public:
 
     template< class T, class U, class V, class Q > coEmit( T& fd, U& res, V& cb, Q& self ){
-    coStart
+    gnStart
 
         num_row = PQntuples(res); 
         num_col = PQnfields(res);
@@ -38,7 +38,7 @@ public:
  
         PQclear(res);
 
-    coStop
+    gnStop
     }
 
 };}}
