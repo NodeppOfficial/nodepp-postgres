@@ -15,7 +15,6 @@
 namespace nodepp { namespace _postgres_ { GENERATOR(cb) {
 protected:
     
-    map_t<string_t,string_t> arguments; 
     int x, y, num_row, num_col;
     array_t<string_t> col;
 
@@ -30,11 +29,12 @@ public:
         for( x=0; x<num_row; x++ )
            { col.push( PQgetvalue( res, x, 0 ) ); }
 
-        for( y=1; y<num_col; y++ ){
+        for( y=1; y<num_col; y++ ){ do {
+        auto object = map_t<string_t,string_t>();
         for( x=0; x<num_row; x++ ){
              auto data = PQgetvalue( res, x, y );
-             arguments[ col[y] ] = data ? data : "NULL"; 
-        } cb(arguments); coNext; }
+             object[ col[y] ] = data ? data : "NULL"; 
+        }    cb( object ); } while(0); coNext; }
  
         PQclear(res);
 
