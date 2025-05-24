@@ -14,7 +14,7 @@
 
 namespace nodepp { namespace _postgres_ { GENERATOR(cb) {
 protected:
-    
+
     int x, y, num_row, num_col;
     array_t<string_t> col;
 
@@ -23,19 +23,19 @@ public:
     template< class T, class U, class V, class Q > coEmit( T& fd, U& res, V& cb, Q& self ){
     gnStart
 
-        num_row = PQntuples(res); 
-        num_col = PQnfields(res);
+        num_col = PQntuples(res);
+        num_row = PQnfields(res);
 
-        for( x=0; x<num_row; x++ )
+        for( x=0; x<num_col; x++ )
            { col.push( PQgetvalue( res, x, 0 ) ); }
 
-        for( y=1; y<num_col; y++ ){ do {
+        for( y=1; y<num_row; y++ ){ do {
         auto object = map_t<string_t,string_t>();
-        for( x=0; x<num_row; x++ ){
-             auto data = PQgetvalue( res, x, y );
-             object[ col[y] ] = data ? data : "NULL"; 
+        for( x=0; x<num_col; x++ ){
+             auto row = PQgetvalue( res, x, y );
+             object[ col[y] ] = row ? row : "NULL";
         }    cb( object ); } while(0); coNext; }
- 
+
         PQclear(res);
 
     gnStop
@@ -58,23 +58,23 @@ protected:
     };  ptr_t<NODE> obj;
 
 public:
-    
+
     virtual ~postgres_t() noexcept {
         if( obj.count() > 1 || obj->fd == nullptr ){ return; }
         if( obj->state == 0 ){ return; } free();
     }
-    
+
     /*─······································································─*/
 
     virtual void free() const noexcept {
         if( obj->fd == nullptr ){ return; }
         if( obj->state == 0 )   { return; }
         PQfinish( obj->fd );
-        obj->state = 0; 
+        obj->state = 0;
     }
-    
+
     /*─······································································─*/
-    
+
 #ifdef NODEPP_SSL
     postgres_t ( string_t uri, string_t name, ssl_t* ssl ) : obj( new NODE ) {
 
@@ -86,14 +86,14 @@ public:
         obj->fd = PQconnectdb( regex::format( "dbname=${0} host=${1} user=${2} password=${3} port=${4} sslcert=${5} sslkey=${6}",
             name, host, user, pass, port, ssl->get_crt_path(), ssl->get_key_path()
         ).get() ); if( PQstatus( obj->fd ) != CONNECTION_OK ) {
-            process::error( PQerrorMessage(obj->fd) ); 
+            process::error( PQerrorMessage(obj->fd) );
         }
 
     }
 #endif
-    
+
     /*─······································································─*/
-    
+
     postgres_t ( string_t uri, string_t name ) : obj( new NODE ) {
 
         auto host = url::hostname( uri );
@@ -108,9 +108,9 @@ public:
         }
 
     }
-    
+
     postgres_t () : obj( new NODE ) { obj->state = 0; }
-    
+
     /*─······································································─*/
 
     void exec( const string_t& cmd, const function_t<void,sql_item_t>& cb ) const {
@@ -118,12 +118,12 @@ public:
 
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
-        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res); 
+        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
              process::error( PQerrorMessage(obj->fd) );
         }
 
-        auto self = type::bind( this );
-        _postgres_::cb task; process::add( task, obj->fd, res, cb, self );
+        auto self = type::bind( this ); _postgres_::cb task;
+        process::add( task, obj->fd, res, cb, self );
     }
 
     array_t<sql_item_t> exec( const string_t& cmd ) const { array_t<sql_item_t> arr;
@@ -132,12 +132,12 @@ public:
 
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
-        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res); 
+        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
              process::error( PQerrorMessage(obj->fd) );
         }
 
-        auto self = type::bind( this );
-        _postgres_::cb task; process::await( task, obj->fd, res, cb, self ); return arr;
+        auto self = type::bind( this ); _postgres_::cb task;
+        process::await( task, obj->fd, res, cb, self ); return arr;
     }
 
 };}
