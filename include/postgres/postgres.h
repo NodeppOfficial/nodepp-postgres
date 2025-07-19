@@ -21,7 +21,7 @@ protected:
 public:
 
     template< class T, class U, class V, class Q > coEmit( T& fd, U& res, V& cb, Q& self ){
-    gnStart
+    coBegin ; coWait( self->is_used()==1 ); self->use();
 
         num_col = PQntuples(res);
         num_row = PQnfields(res);
@@ -36,9 +36,9 @@ public:
              object[ col[y] ] = row ? row : "NULL";
         }    cb( object ); } while(0); coNext; }
 
-        PQclear(res);
+        self->release(); PQclear(res);
 
-    gnStop
+    coFinish
     }
 
 };}}
@@ -54,26 +54,21 @@ protected:
 
     struct NODE {
         PGconn *fd = nullptr;
+        bool  used = 0;
         int  state = 1;
     };  ptr_t<NODE> obj;
 
 public:
 
+    event_t<> onUse;
+    event_t<> onRelease;
+
+    /*─······································································─*/
+
     virtual ~postgres_t() noexcept {
         if( obj.count() > 1 || obj->fd == nullptr ){ return; }
         if( obj->state == 0 ){ return; } free();
     }
-
-    /*─······································································─*/
-
-    virtual void free() const noexcept {
-        if( obj->fd == nullptr ){ return; }
-        if( obj->state == 0 )   { return; }
-        PQfinish( obj->fd );
-        obj->state = 0;
-    }
-
-    /*─······································································─*/
 
 #ifdef NODEPP_SSL
     postgres_t ( string_t uri, string_t name, ssl_t* ssl ) : obj( new NODE ) {
@@ -86,7 +81,7 @@ public:
         obj->fd = PQconnectdb( regex::format( "dbname=${0} host=${1} user=${2} password=${3} port=${4} sslcert=${5} sslkey=${6}",
             name, host, user, pass, port, ssl->get_crt_path(), ssl->get_key_path()
         ).get() ); if( PQstatus( obj->fd ) != CONNECTION_OK ) {
-            process::error( PQerrorMessage(obj->fd) );
+            throw except_t( PQerrorMessage(obj->fd) );
         }
 
     }
@@ -104,7 +99,7 @@ public:
         obj->fd = PQconnectdb( regex::format( "dbname=${0} host=${1} user=${2} password=${3} port=${4}",
             name, host, user, pass, port
         ).get() ); if( PQstatus( obj->fd ) != CONNECTION_OK ) {
-            process::error( PQerrorMessage(obj->fd) );
+            throw except_t( PQerrorMessage(obj->fd) );
         }
 
     }
@@ -113,31 +108,76 @@ public:
 
     /*─······································································─*/
 
-    void exec( const string_t& cmd, const function_t<void,sql_item_t>& cb ) const {
-        if( obj->state == 0 ){ return; }
+    array_t<sql_item_t> exec( const string_t& cmd ) const { queue_t<sql_item_t> arr;
+        function_t<void,sql_item_t> cb = [&]( sql_item_t args ){ arr.push( args ); };
+        if( cmd.empty() || obj->state==0 ){ return nullptr; }
 
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
         if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
-             process::error( PQerrorMessage(obj->fd) );
+             throw except_t( PQerrorMessage(obj->fd) ); return nullptr;
+        }
+
+        auto self = type::bind( this ); _postgres_::cb task;
+        process::await( task, obj->fd, res, cb, self ); return arr.data();
+    }
+
+    void exec( const string_t& cmd, const function_t<void,sql_item_t>& cb ) const {
+        if( cmd.empty() || obj->state==0 ){ return; }
+
+        PGresult *res = PQexec( obj->fd, cmd.data() );
+
+        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
+             throw except_t( PQerrorMessage(obj->fd) ); return;
         }
 
         auto self = type::bind( this ); _postgres_::cb task;
         process::add( task, obj->fd, res, cb, self );
     }
 
-    array_t<sql_item_t> exec( const string_t& cmd ) const { array_t<sql_item_t> arr;
-        function_t<void,sql_item_t> cb = [&]( sql_item_t args ){ arr.push( args ); };
-        if( obj->state == 0 ){ return nullptr; }
+    /*─······································································─*/
+
+    void async( const string_t& cmd ) const {
+        function_t<void,sql_item_t> cb = [=]( sql_item_t ){};
+        if( cmd.empty() || obj->state==0 ){ return; }
 
         PGresult *res = PQexec( obj->fd, cmd.data() );
 
         if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
-             process::error( PQerrorMessage(obj->fd) );
+             throw except_t( PQerrorMessage(obj->fd) ); return;
         }
 
         auto self = type::bind( this ); _postgres_::cb task;
-        process::await( task, obj->fd, res, cb, self ); return arr;
+        process::add( task, obj->fd, res, cb, self );
+    }
+
+    void await( const string_t& cmd ) const {
+        function_t<void,sql_item_t> cb = [&]( sql_item_t ){};
+        if( cmd.empty() || obj->state==0 ){ return; }
+
+        PGresult *res = PQexec( obj->fd, cmd.data() );
+
+        if ( PQresultStatus(res) != PGRES_TUPLES_OK ) { PQclear(res);
+             throw except_t( PQerrorMessage(obj->fd) ); return;
+        }
+
+        auto self = type::bind( this ); _postgres_::cb task;
+        process::await( task, obj->fd, res, cb, self ); return arr.data();
+    }
+
+    /*─······································································─*/
+
+    void use()     const noexcept { if( obj->used==1 ){ return; } obj->used=1; onUse    .emit(); }
+    void release() const noexcept { if( obj->used==0 ){ return; } obj->used=0; onRelease.emit(); }
+    bool is_used() const noexcept { return obj->used; }
+
+    /*─······································································─*/
+
+    void free() const noexcept {
+        if( obj->fd == nullptr ){ return; }
+        if( obj->state == 0 )   { return; }
+        PQfinish( obj->fd );
+        release(); obj->state = 0;
     }
 
 };}
