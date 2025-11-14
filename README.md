@@ -1,64 +1,97 @@
-# NODEPP-MARIADB
-Run **PostgresDB** in Nodepp
+# Nodepp PostgreSQL Client
 
-## Dependencies
+A modern, high-performance PostgreSQL database driver built for the Nodepp framework. This client leverages Nodepp's coroutines, promises, and events to execute SQL commands non-blockingly, ensuring scalable I/O operations.
 
-- postgress-dev
-  - 🪟: `pacman -S mingw-w64-x86_64-postgresql`
-  - 🐧: `sudo apt install libpq-dev`
+## Connection and Initialization
 
-- Openssl
-  - 🪟: `pacman -S mingw-w64-ucrt-x86_64-openssl`
-  - 🐧: `sudo apt install libssl-dev`
+The postgres_t object is constructed using a connection URI and the target database name.
 
-## Example
 ```cpp
 #include <nodepp/nodepp.h>
-#include <postgres.h>
+#include <postgres/postgres.h>
 
 using namespace nodepp;
 
-void onMain() {
+void main() {
+    // Note: The postgres_t constructor blocks the current fiber until connection is established.
+    try {
+        // Connect to 'mydatabase' using details from the URI (e.g., 'postgres://user:pass@host:5432')
+        auto db = postgres_t("postgres://localhost:5432", "mydatabase");
 
-    postgres_t db ("db://usr:pass@localhost:8000","dbName");
+        // Example: Execute a non-query command synchronously
+        db.await("CREATE TABLE IF NOT EXISTS inventory (item_id SERIAL PRIMARY KEY, name TEXT);");
 
-    db.exec(R"(
-        CREATE TABLE COMPANY(
-        ID INT PRIMARY KEY     NOT NULL,
-        NAME           TEXT    NOT NULL,
-        AGE            INT     NOT NULL,
-        ADDRESS        CHAR(50),
-        SALARY         REAL );
-    )");
+        console::log("Connected and table created.");
 
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (1, 'Paul', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (2, 'John', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (3, 'Mery', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (4, 'Pipi', 32, 'California', 20000.00 );
-    )");
-
-    db.exec("SELECT * from COMPANY",[]( sql_item_t args ){
-        for( auto &x: args.keys() ){
-             console::log( x, "->", args[x] );
-        }
-    });
-
+    } catch( except_t error ) {
+        console::error("Connection or initialization failed:", error.get());
+    }
 }
 ```
 
+## Asynchronous API Reference
+
+The client offers three primary methods for executing SQL, designed for optimal concurrency in different scenarios.
+
+**1. Asynchronous with Promise (.resolve())**
+
+The recommended method for queries (SELECT). It runs in the background and returns a promise that resolves with the complete result set, making it perfect for structured asynchronous control.
+
+```cpp
+db.resolve("SELECT item_id, name FROM inventory WHERE item_id > 10;")
+
+.then([]( array_t<sql_item_t> results ) {
+    console::log("Fetched %d items.", results.size());
+})
+
+.fail([]( except_t error ) {
+    console::error("Async query failed:", error.what());
+});
+```
+
+**2. Synchronous/Blocking (.await())**
+
+Use this when you need an immediate result in a context that can yield (block the current fiber). It acts as a synchronous wrapper around the .resolve() promise.
+
+```cpp
+try {
+    auto results = db.await("SELECT COUNT(*) AS total FROM inventory;");
+    console::log("Current item count:", results[0]["total"]);
+
+} catch( except_t error ) {
+    console::error("Synchronous read failed:", error.what());
+}
+```
+
+**3. Asynchronous Streaming/Fire-and-Forget (.emit())**
+
+Use emit() for non-query commands (INSERT, UPDATE, DELETE) or when processing very large result sets row-by-row.
+
+```cpp
+// Non-query command (returns PGRES_COMMAND_OK), executes successfully in the background.
+db.emit("INSERT INTO inventory (name) VALUES ('Widget A');");
+db.emit("INSERT INTO inventory (name) VALUES ('Gadget B');");
+```
+```cpp
+// Example: Streaming results
+db.emit("SELECT * FROM massive_table;", []( sql_item_t row ) {
+    // Process the row here (e.g., write to disk, log)
+    console::log("Processing row ID:", row["item_id"]);
+});
+```
+
+## Dependencies
+```bash
+#postgres-dev
+  🪟: pacman -S mingw-w64-x86_64-postgresql
+  🐧: sudo apt install libpq-dev
+
+#Openssl
+  🪟: pacman -S mingw-w64-ucrt-x86_64-openssl
+  🐧: sudo apt install libssl-dev
+```
+
 ## Compilation
-`g++ -o main main.cpp -I ./include -lmariadb -lssl -lcrypto ; ./main`
+```bash
+g++ -o main main.cpp -I ./include -lpq -lssl -lcrypto ; ./main
+```
