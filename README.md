@@ -10,6 +10,31 @@ A modern, high-performance PostgreSQL database driver built for the Nodepp frame
   🪟: pacman -S mingw-w64-ucrt-x86_64-openssl
   🐧: sudo apt install libssl-dev
 ```
+```bash
+include(FetchContent)
+
+FetchContent_Declare(
+	nodepp
+	GIT_REPOSITORY   https://github.com/NodeppOfficial/nodepp
+	GIT_TAG          origin/main
+	GIT_PROGRESS     ON
+)
+FetchContent_MakeAvailable(nodepp)
+
+FetchContent_Declare(
+	nodepp-postgres
+	GIT_REPOSITORY   https://github.com/NodeppOfficial/nodepp-postgres
+	GIT_TAG          origin/main
+	GIT_PROGRESS     ON
+)
+FetchContent_MakeAvailable(nodepp-postgres)
+
+#[...]
+
+target_link_libraries( #[...]
+	PUBLIC nodepp nodepp-postgres #[...]
+)
+```
 
 ## Connection and Initialization
 The postgres_t object is constructed using a connection URI and the target database name.
