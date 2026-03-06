@@ -1,64 +1,71 @@
-# NODEPP-MARIADB
-Run **PostgresDB** in Nodepp
+# Nodepp PostgreSQL Client
+A modern, high-performance PostgreSQL database driver built for the Nodepp framework. This client leverages Nodepp's coroutines, promises, and events to execute SQL commands non-blockingly, ensuring scalable I/O operations.
 
-## Dependencies
+## Dependencies & CMake Integration
+```bash
+#postgres-dev
+  🪟: pacman -S mingw-w64-x86_64-postgresql
+  🐧: sudo apt install libpq-dev
+#Openssl
+  🪟: pacman -S mingw-w64-ucrt-x86_64-openssl
+  🐧: sudo apt install libssl-dev
+```
+```bash
+include(FetchContent)
 
-- postgress-dev
-  - 🪟: `pacman -S mingw-w64-x86_64-postgresql`
-  - 🐧: `sudo apt install libpq-dev`
+FetchContent_Declare(
+	nodepp
+	GIT_REPOSITORY   https://github.com/NodeppOfficial/nodepp
+	GIT_TAG          origin/main
+	GIT_PROGRESS     ON
+)
+FetchContent_MakeAvailable(nodepp)
 
-- Openssl
-  - 🪟: `pacman -S mingw-w64-ucrt-x86_64-openssl`
-  - 🐧: `sudo apt install libssl-dev`
+FetchContent_Declare(
+	nodepp-postgres
+	GIT_REPOSITORY   https://github.com/NodeppOfficial/nodepp-postgres
+	GIT_TAG          origin/main
+	GIT_PROGRESS     ON
+)
+FetchContent_MakeAvailable(nodepp-postgres)
 
-## Example
+#[...]
+
+target_link_libraries( #[...]
+	PUBLIC nodepp nodepp-postgres #[...]
+)
+```
+
+## Connection and Initialization
+The postgres_t object is constructed using a connection URI and the target database name.
+
 ```cpp
 #include <nodepp/nodepp.h>
-#include <postgres.h>
+#include <postgres/postgres.h>
 
 using namespace nodepp;
 
-void onMain() {
+void main() {
+    // Note: The postgres_t constructor blocks the current fiber until connection is established.
+    try {
+        // Connect to 'mydatabase' using details from the URI (e.g., 'postgres://user:pass@host:5432')
+        auto db = postgres_t("postgres://localhost:5432", "mydatabase");
 
-    postgres_t db ("db://usr:pass@localhost:8000","dbName");
+        // Example: Execute a non-query command synchronously
+        db.emit("CREATE TABLE IF NOT EXISTS inventory (item_id SERIAL PRIMARY KEY, name TEXT);");
 
-    db.exec(R"(
-        CREATE TABLE COMPANY(
-        ID INT PRIMARY KEY     NOT NULL,
-        NAME           TEXT    NOT NULL,
-        AGE            INT     NOT NULL,
-        ADDRESS        CHAR(50),
-        SALARY         REAL );
-    )");
+        console::log("Connected and table created.");
 
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (1, 'Paul', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (2, 'John', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (3, 'Mery', 32, 'California', 20000.00 );
-    )");
-
-    db.exec(R"(
-        INSERT INTO COMPANY ( ID, NAME, AGE, ADDRESS, SALARY )
-        VALUES (4, 'Pipi', 32, 'California', 20000.00 );
-    )");
-
-    db.exec("SELECT * from COMPANY",[]( sql_item_t args ){
-        for( auto &x: args.keys() ){
-             console::log( x, "->", args[x] );
-        }
-    });
-
+    } catch( except_t error ) {
+        console::error("Connection or initialization failed:", error.get());
+    }
 }
 ```
 
 ## Compilation
-`g++ -o main main.cpp -I ./include -lmariadb -lssl -lcrypto ; ./main`
+```bash
+g++ -o main main.cpp -I ./include -lpq -lssl -lcrypto ; ./main
+```
+
+## License
+**Nodepp-Postgres** is distributed under the MIT License. See the LICENSE file for more details.
